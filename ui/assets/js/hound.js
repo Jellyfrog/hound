@@ -79,8 +79,20 @@ var ParamsFromUrl = function(params) {
 };
 
 var ParamValueToBool = function(v) {
+  if(v == null) {
+    return false;
+  }
+
   v = v.toLowerCase();
   return v == 'fosho' || v == 'true' || v == '1';
+};
+
+var isAutoHideEnabled = function() {
+  return ParamValueToBool(localStorage.getItem('autoHideAdvanced'));
+};
+
+var isIgnoreCasePrefEnabled = function() {
+  return ParamValueToBool(localStorage.getItem('ignoreCase'));
 };
 
 /**
@@ -310,7 +322,7 @@ var SearchBar = React.createClass({
   componentWillMount: function() {
     var _this = this;
     Model.didLoadRepos.tap(function(model, repos) {
-      _this.setState({ allRepos: Object.keys(repos) });
+      _this.setState({ allRepos: Object.keys(repos).sort() });
     });
   },
 
@@ -389,6 +401,10 @@ var SearchBar = React.createClass({
     this.showAdvanced();
   },
   submitQuery: function() {
+    var isEnabled = isAutoHideEnabled();
+    if(isEnabled) {
+      this.hideAdvanced();
+    }
     this.props.onSearchRequested(this.getParams());
   },
   getRegExp : function() {
@@ -419,12 +435,16 @@ var SearchBar = React.createClass({
         excludeFiles = this.refs.excludeFiles.getDOMNode();
 
     q.value = params.q;
-    i.checked = ParamValueToBool(params.i);
+    i.checked = ParamValueToBool(params.i) || isIgnoreCasePrefEnabled();
     files.value = params.files;
     excludeFiles.value = params.excludeFiles;
   },
   hasAdvancedValues: function() {
-    return this.refs.files.getDOMNode().value.trim() !== '' || this.refs.excludeFiles.getDOMNode().value.trim() !== '' || this.refs.icase.getDOMNode().checked || this.refs.repos.getDOMNode().value !== '';
+    if(isIgnoreCasePrefEnabled()) {
+      return this.refs.files.getDOMNode().value.trim() !== '' || this.refs.excludeFiles.getDOMNode().value.trim() !== '' || this.refs.repos.getDOMNode().value !== '';
+    }else{
+      return this.refs.files.getDOMNode().value.trim() !== '' || this.refs.excludeFiles.getDOMNode().value.trim() !== '' || this.refs.icase.getDOMNode().checked || this.refs.repos.getDOMNode().value !== '';
+    }
   },
   showAdvanced: function() {
     var adv = this.refs.adv.getDOMNode(),
@@ -452,6 +472,12 @@ var SearchBar = React.createClass({
 
     q.focus();
   },
+  ignoreCaseChanged: function() {
+    var isChecked = this.refs.icase.getDOMNode().checked;
+    this.setState({
+      i: isChecked
+    });
+  },
   render: function() {
     var repoCount = this.state.allRepos.length,
         repoOptions = [],
@@ -469,7 +495,7 @@ var SearchBar = React.createClass({
     var statsView = '';
     if (stats) {
       statsView = (
-        <div className="stats">
+        <span>
           <div className="stats-left">
             <a href="/excluded_files.html"
               className="link-gray">
@@ -481,7 +507,7 @@ var SearchBar = React.createClass({
             <div className="val">{FormatNumber(stats.Server)}ms server</div> /
             <div className="val">{stats.Files} files</div>
           </div>
-        </div>
+        </span>
       );
     }
 
@@ -504,7 +530,7 @@ var SearchBar = React.createClass({
           <div id="adv" ref="adv">
             <span className="octicon octicon-chevron-up hide-adv" onClick={this.hideAdvanced}></span>
             <div className="field">
-              <label htmlFor="files">File Path</label>
+              <label htmlFor="files">Included File Path</label>
               <div className="field-input">
                 <input type="text"
                     id="files"
@@ -528,7 +554,7 @@ var SearchBar = React.createClass({
             <div className="field">
               <label htmlFor="ignore-case">Ignore Case</label>
               <div className="field-input">
-                <input id="ignore-case" type="checkbox" ref="icase" />
+                <input type="checkbox" ref="icase" checked={this.state.i} onClick={this.ignoreCaseChanged} />
               </div>
             </div>
             <div className="field">
@@ -544,7 +570,12 @@ var SearchBar = React.createClass({
             <em>Advanced:</em> ignore case, filter by path, stuff like that.
           </div>
         </div>
-        {statsView}
+        <div className="stats">
+          <div className="stats-left">
+            <a href="/preferences.html" className="link-gray">Preferences</a>
+          </div>
+          {statsView}
+        </div>
       </div>
     );
   }
@@ -789,7 +820,7 @@ var App = React.createClass({
 
     this.setState({
       q: params.q,
-      i: params.i,
+      i: (params.i || isIgnoreCasePrefEnabled()),
       files: params.files,
       excludeFiles: params.excludeFiles,
       repos: repos
@@ -850,7 +881,19 @@ var App = React.createClass({
       '&repos=' + params.repos;
     history.pushState({path:path}, '', path);
   },
+  initPreferences: function() {
+    var ignoreCase = localStorage.getItem('ignoreCase');
+    var hideAdvanced = localStorage.getItem('autoHideAdvanced');
+
+    if(ignoreCase == null) {
+      localStorage.setItem('ignoreCase', false);
+    }
+    if(hideAdvanced == null) {
+      localStorage.setItem('autoHideAdvanced', false);
+    }
+  },
   render: function() {
+    this.initPreferences();
     return (
       <div>
         <SearchBar ref="searchBar"
